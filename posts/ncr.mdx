@@ -1,0 +1,76 @@
+---
+title: NCR字符串转成真实字符显示
+---
+
+## 遇到以&#开头的特殊字符串
+
+开发过程中遇到了一种奇怪的字符串，以&#开头，如下：
+
+`&#20037;&#31934;&#21697;`
+
+于是查询了下发现是 NCR 字符串，然后就了解了下什是 NCR，又如何转译成正常字符串。
+
+简单通俗说就是一种标识特殊语言字符的[转义序列](https://zh.wikipedia.org/wiki/转义序列)结构，如日语，中文，俄文等特俗符号等
+
+## 什么是 NCR？
+
+wiki 百科介绍：
+
+> A **numeric character reference** (**NCR**) is a common [markup](<https://en.wikipedia.org/wiki/Markup_(computer_programming)>) construct used in [SGML](https://en.wikipedia.org/wiki/SGML) and SGML-derived markup languages such as [HTML](https://en.wikipedia.org/wiki/HTML) and [XML](https://en.wikipedia.org/wiki/XML). It consists of a short sequence of [characters](<https://en.wikipedia.org/wiki/Character_(computing)>) that, in turn, represents a single character. Since [WebSgml](https://en.wikipedia.org/wiki/SGML), [XML](https://en.wikipedia.org/wiki/XML) and [HTML 4](https://en.wikipedia.org/wiki/HTML_4), the code points of the [Universal Character Set](https://en.wikipedia.org/wiki/Universal_Character_Set) (UCS) of [Unicode](https://en.wikipedia.org/wiki/Unicode) are used. NCRs are typically used in order to represent characters that are not [directly encodable](https://en.wikipedia.org/wiki/Plain_text#Encoding) in a particular document (for example, because they are international characters that do not fit in the 8-bit character set being used, or because they have special syntactic meaning in the language). When the document is interpreted by a markup-aware reader, each NCR is treated as if it were the character it represents.
+>
+> from: https://en.wikipedia.org/wiki/Numeric_character_reference
+
+**字符值引用**（numeric character reference, NCR）是在[标记语言](https://zh.wikipedia.org/wiki/标记语言)[SGML](https://zh.wikipedia.org/wiki/SGML)以及派生的如[HTML](https://zh.wikipedia.org/wiki/HTML)与[XML](https://zh.wikipedia.org/wiki/XML)中常见的一种[转义序列](https://zh.wikipedia.org/wiki/转义序列)结构，用来表示[Unicode](https://zh.wikipedia.org/wiki/Unicode)的[通用字符集](https://zh.wikipedia.org/wiki/通用字符集) （UCS）中的单个字符. NCR 可以表示在一个特定文档中不能直接[编码](https://zh.wikipedia.org/wiki/编码)的[字符](https://zh.wikipedia.org/wiki/字符)，而该标记语言阅读器软件把每个 NCR 当作一个字符来处理。
+
+例如，在[ISO/IEC 8859-1](https://zh.wikipedia.org/wiki/ISO/IEC_8859-1)编码的网页文件中使用了[俄文字母](https://zh.wikipedia.org/wiki/西里尔字母)或者[希腊字母](https://zh.wikipedia.org/wiki/希腊字母)。由于该编码不支持这些字母，就需要用 NCR 来表示。[网页浏览器](https://zh.wikipedia.org/wiki/网页浏览器)可以正确地把这些 NCR 绘制为相应的西里尔字母或希腊字母。
+
+### 描述如下：
+
+标记语言使用的[字符编码](https://zh.wikipedia.org/wiki/字符编码)方法（如 ISO-8859），常常不能表示所有的[Unicode](https://zh.wikipedia.org/wiki/Unicode)字符，这就需要使用“转义”机制来处理这些不能编码的字符。
+
+基于[SGML](https://zh.wikipedia.org/wiki/SGML)的[标记语言](https://zh.wikipedia.org/wiki/标记语言)允许使用 7 比特[ASCII 字符](https://zh.wikipedia.org/w/index.php?title=ASCII字符&action=edit&redlink=1)（即 Unicode 的前 128 个[码位](https://zh.wikipedia.org/wiki/码位)）的序列来表示或者说引用任何 Unicode 字符。基于 Unicode 字符"码位"的字符引用被称作字符值引用。HTML 4 与所有版本的[XHTML](https://zh.wikipedia.org/wiki/XHTML)及 XML，这些 Unicode 字符的码位可以表示为十进制或十六进制。语法如下：
+
+字符 U+0026 （[&](https://zh.wikipedia.org/wiki/%26)）， 后跟随 U+0023 （[#](https://zh.wikipedia.org/wiki/)），后跟随下列选择之一：
+
+- 一个或更多十进制数字 0（U+0030）到 9（U+0039）;
+- 字符 U+0078 （[x](https://zh.wikipedia.org/wiki/X)）后跟随一个或更多个十六进制数字, 包括从 0 （U+0030）到 9（U+0039）, 大写拉丁字母从 A （U+0041）到 F （U+0046）, 小写拉丁字母从 a（U+0061）到 f（U+0066）;
+
+上述两种选择情形之后，跟随字符 U+003B （[;](https://zh.wikipedia.org/w/index.php?title=;&action=edit&redlink=1)）。 老的版本的 HTML 不支持十六进制表示法.
+
+另外一种字符引用被称作*[字符实体引用](https://zh.wikipedia.org/wiki/字符实体引用)，*允许字符用其名字而不是码位的值来引用。HTML 定义了一些字符实体，但是并不多；其它字符只能直接用 NCR 来引用。
+
+## 如何转译解码成真实字符串
+
+你可能会搜到很多如下的方案：
+
+```js
+var regex_num_set = /&#(\d+);/g;
+var strJapanese =
+  'Here is some Japanese text: &#12415;&#12394;&#12373;&#12435;&#12289;';
+
+strJapanese = strJapanese.replace(regex_num_set, function (_, $1) {
+  return String.fromCharCode($1);
+});
+
+document.write('<pre>' + JSON.stringify(strJapanese, 0, 3));
+```
+
+_来自_：https://stackoverflow.com/questions/35501026/converting-numeric-character-reference-to-actual-character
+
+但是你会发现它的正则只是转译了 10 进制，对十六进制的（类似：`&#x57DF;&#x540D;&#x51FA;&#x552E;`）并没有效果。
+
+然后你就开始寻找发现搜 NCR 相关的并不那么容易找到答案；
+
+要改一下正则兼容？十六进制转是进制等？等等……
+
+再深入探索 html entity decode 相关的，于是在 github 找到了想要的。
+
+> **符合的精简库**：https://github.com/humanmade/simple-entity-decode
+>
+> 另外比较齐全的库：https://github.com/mathiasbynens/he
+
+其他参考：
+
+https://www.cnblogs.com/shishm/archive/2011/11/24/2261996.html
+
+https://www.w3.org/TR/2017/WD-html52-20170228/syntax.html#character-references

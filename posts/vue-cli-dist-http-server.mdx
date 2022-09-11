@@ -1,0 +1,137 @@
+---
+title: 给vue-cli编译后的dist配置简单的http服务
+---
+
+## 初步想法
+
+使用官方脚手架 vue-cli 构建项目的时候，开发完成后，我们都会 build 一下，打包编译好的代码到 dist 目录，然后部署到 nginx。有时候就想我是不是可以直接使用 node 服务启动先简单看看，因为有些开发机器不一定都会安装 nginx，虽然安装配置 nginx 也就几分钟的事情，但是为了更便捷快速查看我们发布的代码，考虑使用和我们开发环境一致的 node 去提供 http 服务。
+
+## 本身的开发环境 node 服务
+
+平常使用 vue-cli 脚手架的时候，很方便直接配置服务端口，和代理转发，就能轻松进行开发；vue-cli 已经集成了很多工具包，我们只需要在 vue.config.js 配置 devServer 即可，
+
+```
+devServer: {
+  open: process.platform === 'darwin',
+  host: '0.0.0.0',
+  port: 3666,
+  https: false,
+  hot: false,
+  // See https://github.com/vuejs/vue-cli/blob/dev/docs/cli-service.md#configuring-proxy
+  proxy: {
+    '/api/v1': {
+      target:'https://*****', //反向代理的API地址
+      changeOrigin: true
+  	},
+  },
+},
+```
+
+其实 vue-cli 自带了 webpack 外加 webpack 的一些插件库提供了各种模块打包，压缩，合并，分割代码，以及一些语法转换等等，包括我们编写完后需要查看页面的 http 服务，需要访问接口的反向代理，热加载等等，其中我们现在想要做的，其实已经满足，只是没有配置而已，我们可以通过查看我们已经安装的模块:
+
+然后查查可以简单启动 http 服务的 node 框架，有 express，http- server 等，我们选择了 express，
+
+```
+yarn list ｜ grep express
+```
+
+## 使用 express 提供简单的 http 服务
+
+### 简单的静态 http 服务
+
+直接新建一个文件 dist-server.js，内容如下：
+
+```
+var express = require('express')
+var app = express()
+
+app.use(express.static('dist'))
+
+//监听端口为1587
+app.listen(1587, function () {
+  console.log(' app listening at http://localhost:1587');
+});
+
+```
+
+然后启动服务**node dist-server.js**
+
+访问地址，和 nginx 一样可以正常使用。如果看不到，可能是目录不对，看看 dist 目录是否有问题。然后你会看到可以正常访问 app 的首页了，但是一点击大其他页面就会有问题，这时你就想到了单页面应用需要服务器也要配置支持。
+
+### 像 nginx 配置 try_files 一样配置可以支持 SPA 应用
+
+像之前配置 nginx 的 try_files 一样，因为我们是前端路由，需要每次都要从入口文件去索引。
+
+```
+server {
+        listen       8080;
+        server_name  localhost;
+
+        // *******
+
+        location / {
+            root   /****/web/dist;  #html;
+            index  index.html index.htm;
+            try_files  $uri  $uri/ /index.html = 404;
+        }
+        //******
+}
+```
+
+我们应该也是需要配置的，查了下添加如下几句：
+
+```
+var express = require('express')
+var app = express()
+
+app.use(express.static('dist'))
+
+// 新增
+app.get('*', function(req, res) {
+    res.sendfile('./dist/index.html')
+})
+
+//监听端口为1587
+app.listen(1587, function () {
+  console.log(' app listening at http://localhost:1587');
+});
+```
+
+> https://www.expressjs.com.cn/4x/api.html#req.get
+
+重新启动服务，可以访问其他页面了，但是你会发现我们的 API 跨域还需要转发，嗯下一步
+
+### 配置 API 反向代理
+
+然后看看 express 如何配置简单的代理，需要安装模块 http-proxy-middleware，yarn list | grep proxy 看了下我们已有了，不需要安装。
+
+```
+var express = require('express')
+var proxy = require('http-proxy-middleware') //新增
+var app = express()
+
+//新增
+app.use('/api', proxy({
+   target: 'https://****.com', // 目标代理地址
+   changeOrigin: true,
+   //pathRewrite: {
+   //    '^/api': ''
+   //}
+}))
+
+app.use(express.static('dist'))
+
+app.get('*', function(req, res) {
+    res.sendfile('./dist/index.html')
+})
+
+//监听端口为1587
+app.listen(1587, function () {
+  console.log(' app listening at http://localhost:1587');
+});
+
+```
+
+> https://github.com/villadora/express-http-proxy#readme
+
+OK，重启服务 node dist-server.js，没问题。

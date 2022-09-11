@@ -1,0 +1,140 @@
+---
+title: vue项目优化 - 图片压缩，gzip，懒加载
+---
+
+最近有个项目做了个类似宣传页面的首页，放了一堆图片，在本地开发的时候还好，部署发现图片好大好多，影响速度，就想着优化下，压缩一下图片，再做个图片懒加载。
+
+## 手动压缩图片
+
+​ 如果选择手动压缩的话，建议不是私密的图片可以选择在线压缩，因为好多本地软件可能都是需要收费的，倒腾破解比较折腾，还不如直接选择在线压缩，免费便捷。
+
+​ 在线压缩图片网站：
+
+1. https://docsmall.com/image-compress
+
+2. https://tinypng.com/
+
+## 添加插件，流程控制自动化压缩
+
+### image-webpack-loader 插件 压缩图片
+
+​ 这个是直接压缩图片的
+
+​ 安装：
+
+```
+yarn add image-webpack-loader
+```
+
+​ 注意和 URL-loader 以及 file-loader 的使用：可以查看官网https://github.com/tcoopman/image-webpack-loader
+
+​ 官网说是在 file-loader 后使用：
+
+​ 安装完成后简单配置如下：
+
+```
+file： vue.config.js
+此处省略一堆
+chainWebpack: (config)=>{
+        ********
+        // 开发环境不需要
+            .test(/\.(png|jpe?g|gif)(\?.*)?$/) //TODO： svg 有点问题
+            .use('image-webpack-loader')
+            .loader('image-webpack-loader')
+            .options({
+            bypassOnDebug: true
+            })
+            .end();
+```
+
+### 添加 gzip 压缩所有静态资源，compression-webpack-plugin
+
+​ 对图片进行压缩后，你可能需要看看是否开启了 gzip 压缩，nginx 的配置如下：
+
+​ 查看 nginx 配置文件：nginx -t 然后打开看一眼有没有配置 gzip, 不只是 gzip on；这句就行了，需要添加文件类型等参数；详见最后一点 3；
+
+如果开启了 gzip_static on;需要安装模块 ngx_http_gzip_static_module（nginx -V 查看下是否有此模块，可能需要重新编译安装 ngin x），可以读取预先压缩好的 gz 文件，减少请求时的 CPU 消耗。
+
+_<u>注意</u>：为了要兼容不支持 gzip 的浏览器，启用 gzip_static 模块就必须同时保留原始静态文件和 gz 文件。这样的话，在有大量静态文件的情况下，将会大大增加磁盘空间。我们可以利用 nginx 的反向代理功能实现只保留 gz 文件。_
+
+**前端 vue-cli 添加插件 compression-webpack-plugin:**
+
+```
+yarn add compression-webpack-plugin
+```
+
+修改配置文件 vue.config.js
+
+```
+		//省略****
+		chainWebpack: (config)=>{
+        // 开发环境不需要gzip
+        if (process.env.NODE_ENV !== 'production') return;
+        config.plugin('CompressionWebpackPlugin')
+            .use(new CompressionWebpackPlugin({
+                // filename: '[path].gz[query]',
+                algorithm: 'gzip',
+                test: productionGzipExtensions,
+                threshold: 1024,
+                // minRatio: 0.8,
+                // deleteOriginalAssets: true
+            }));
+        //省略****
+    },
+```
+
+具体配置参数可参考：https://www.webpackjs.com/plugins/compression-webpack-plugin/
+
+压缩后文件大小如下：可以看到 gzip 压缩 50%以上，还是很大的提升。
+
+![](https://cdn.jsdelivr.net/gh/wwwjun/img/202020201116110405.png)
+
+## 部署 nginx 开启 gzip 压缩
+
+​ 一切准备就绪，部署 nginx 查看效果，nginx 配置如下：
+
+```
+http {
+		//省略其他配置
+		gzip  on;
+    gzip_static on;
+    # 启用gzip压缩的最小文件；小于设置值的文件将不会被压缩
+    gzip_min_length 1k;
+
+    # gzip 压缩级别 1-10
+    gzip_comp_level 2;
+
+    # 进行压缩的文件类型。
+
+    gzip_types text/plain application/javascript application/x-javascript text/css application/xml text/javascript application/x-httpd-php image/jpeg image/gif image/png;
+
+    # 是否在http header中添加Vary: Accept-Encoding，建议开启
+    gzip_vary on;
+    gzip_disable "MSIE [1-6].";
+    //******省略其他配置
+}
+```
+
+最后查看打开谷歌浏览器查看效果：
+
+可以看到文件大小小了很多，而且响应头里面会有 gzip 相关字段：
+
+![](https://cdn.jsdelivr.net/gh/wwwjun/img/2020/20201117140428.png)
+
+懒加载的话使用了现成的库 vue-lazyload, 安装完直接按照官网说明使用即可：
+
+https://github.com/hilongjw/vue-lazyload
+
+大功告成。
+
+## 参考链接：
+
+https://www.jb51.net/article/146413.htm
+
+https://github.com/tcoopman/image-webpack-loader
+
+https://www.webpackjs.com/plugins/compression-webpack-plugin/
+
+https://github.com/webpack-contrib/compression-webpack-plugin
+
+http://tengine.taobao.org/nginx_docs/cn/docs/http/ngx_http_gzip_static_module.html
